@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Category } from "@/types";
@@ -8,7 +8,7 @@ import { Category } from "@/types";
 const EMOJI_OPTIONS = ["😀", "😎", "🤠", "👨", "👩", "🧑", "👶", "🏠", "⭐", "🌟", "💪", "🎯"];
 
 export default function ConfigPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [userName, setUserName] = useState("");
   const [userEmoji, setUserEmoji] = useState("😀");
