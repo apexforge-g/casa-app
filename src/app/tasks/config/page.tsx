@@ -176,6 +176,31 @@ export default function ConfigPage() {
         </div>
       </div>
 
+      {/* Module links */}
+      <div className="mx-4 mb-6 space-y-2">
+        <h2 className="text-lg font-semibold mb-3">Módulos</h2>
+        <a href="/tasks/cuentas" className="block bg-slate-800/60 rounded-xl p-4 hover:bg-slate-800/80 transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">💰</span>
+            <div>
+              <p className="text-sm font-medium">Cuentas y Pagos</p>
+              <p className="text-xs text-slate-500">Administra cuentas recurrentes</p>
+            </div>
+            <span className="ml-auto text-slate-600">→</span>
+          </div>
+        </a>
+        <a href="/tasks/rutinas" className="block bg-slate-800/60 rounded-xl p-4 hover:bg-slate-800/80 transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🧹</span>
+            <div>
+              <p className="text-sm font-medium">Rutinas de Aseo</p>
+              <p className="text-xs text-slate-500">Administra rutinas de limpieza y mantención</p>
+            </div>
+            <span className="ml-auto text-slate-600">→</span>
+          </div>
+        </a>
+      </div>
+
       {/* Sign out */}
       <div className="mx-4 mb-8">
         <button

@@ -51,3 +51,53 @@ export interface UserProfile {
   name?: string;
   emoji?: string;
 }
+
+export interface Bill {
+  id: string;
+  name: string;
+  amount: number | null;
+  due_day: number;
+  category: string;
+  auto_create_task_days: number;
+  created_by: string;
+  created_at: string;
+}
+
+export interface BillPayment {
+  id: string;
+  bill_id: string;
+  month: number;
+  year: number;
+  paid: boolean;
+  paid_by: string | null;
+  paid_at: string | null;
+  task_id: string | null;
+  bills?: Bill;
+}
+
+export interface Routine {
+  id: string;
+  name: string;
+  frequency_days: number;
+  assigned_to: string | null;
+  last_done_at: string | null;
+  last_done_by: string | null;
+  category: string;
+  created_by: string;
+  created_at: string;
+}
+
+export const BILL_CATEGORIES = [
+  'Servicios', 'Arriendo', 'Seguros', 'Suscripciones', 'Otros'
+] as const;
+
+export const ROUTINE_CATEGORIES = [
+  'Limpieza', 'Mantención', 'Cocina', 'Otros'
+] as const;
+
+export const FREQUENCY_OPTIONS = [
+  { label: 'Diario', days: 1 },
+  { label: 'Semanal', days: 7 },
+  { label: 'Quincenal', days: 14 },
+  { label: 'Mensual', days: 30 },
+] as const;

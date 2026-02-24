@@ -19,6 +19,7 @@ export default function TasksPage() {
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [billsBanner, setBillsBanner] = useState("");
 
   const loadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -57,6 +58,27 @@ export default function TasksPage() {
     const allUsers = Object.entries(map).map(([id, n]) => ({ id, name: n }));
     setUserMap(map);
     setUsers(allUsers);
+    // Check bills due soon
+    try {
+      const now = new Date();
+      const today = now.getDate();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+      const { data: billsData } = await supabase.from("bills").select("*");
+      const { data: paymentsData } = await supabase.from("bill_payments").select("*").eq("month", month).eq("year", year);
+      if (billsData && paymentsData) {
+        const dueSoon = billsData.filter((b: { id: string; due_day: number }) => {
+          const payment = paymentsData.find((p: { bill_id: string; paid: boolean }) => p.bill_id === b.id);
+          if (payment?.paid) return false;
+          const daysUntil = b.due_day - today;
+          return daysUntil >= -2 && daysUntil <= 7;
+        });
+        if (dueSoon.length > 0) {
+          setBillsBanner(`⚠️ ${dueSoon.length} cuenta${dueSoon.length > 1 ? "s" : ""} por vencer esta semana`);
+        }
+      }
+    } catch {}
+
     setLoading(false);
   }, [supabase]);
 
@@ -119,6 +141,12 @@ export default function TasksPage() {
         <h1 className="text-2xl font-bold">🏠 Tareas</h1>
         <p className="text-sm text-slate-500 mt-1">{tasks.length} pendientes</p>
       </div>
+
+      {billsBanner && (
+        <a href="/tasks/cuentas" className="block mx-4 mb-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+          <span className="text-sm text-amber-400 font-medium">{billsBanner}</span>
+        </a>
+      )}
 
       <FilterChips active={filter} onChange={setFilter} />
 
