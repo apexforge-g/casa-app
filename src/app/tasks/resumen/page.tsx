@@ -37,13 +37,17 @@ export default function ResumenPage() {
     const [tasksRes, billsRes, paymentsRes, routinesRes] = await Promise.all([
       supabase.from("tasks").select("*").eq("status", "completed").order("completed_at", { ascending: false }).limit(20),
       supabase.from("bills").select("*").order("due_day"),
-      supabase.from("bill_payments").select("*, bills(*)").eq("month", currentMonth).eq("year", currentYear),
+      supabase.from("bill_payments").select("*").eq("month", currentMonth).eq("year", currentYear),
       supabase.from("routines").select("*").order("created_at"),
     ]);
 
+    const billsData = billsRes.data || [];
     setCompletedTasks(tasksRes.data || []);
-    setBills(billsRes.data || []);
-    setPayments(paymentsRes.data || []);
+    setBills(billsData);
+    setPayments((paymentsRes.data || []).map((p: BillPayment) => ({
+      ...p,
+      bills: billsData.find((b: Bill) => b.id === p.bill_id) || undefined,
+    })));
     setRoutines(routinesRes.data || []);
 
     (tasksRes.data || []).forEach((t: Task) => {

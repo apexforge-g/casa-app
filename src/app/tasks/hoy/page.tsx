@@ -67,11 +67,12 @@ export default function HoyPage() {
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
 
+    try {
     const [catRes, taskRes, billRes, payRes, routRes, grocRes, completedRes] = await Promise.all([
       supabase.from("categories").select("*").order("created_at"),
       supabase.from("tasks").select("*").eq("status", "pending").order("created_at", { ascending: false }),
       supabase.from("bills").select("*"),
-      supabase.from("bill_payments").select("*, bills(*)").eq("month", month).eq("year", year),
+      supabase.from("bill_payments").select("*").eq("month", month).eq("year", year),
       supabase.from("routines").select("*").order("created_at"),
       supabase.from("grocery_items").select("*").in("status", ["needed", "low"]),
       supabase.from("tasks").select("id", { count: "exact" }).eq("status", "completed").gte("completed_at", new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString()),
@@ -85,10 +86,11 @@ export default function HoyPage() {
     if (tasksData.length === 0 && billsData.length === 0 && routinesData.length === 0) {
       try {
         await fetch("/api/seed", { method: "POST" });
-        // Reload
         setTimeout(() => loadData(), 500);
         return;
-      } catch {}
+      } catch {
+        // Seed failed, continue with empty data
+      }
     }
 
     const cats = catRes.data || [];
@@ -97,7 +99,13 @@ export default function HoyPage() {
     const tasksWithCats = tasksData.map((t: Task) => ({ ...t, categories: t.category_id ? catMap[t.category_id] : undefined }));
     setTasks(tasksWithCats);
     setBills(billsData);
-    setPayments(payRes.data || []);
+
+    // Map bill data onto payments client-side
+    const paymentsData = (payRes.data || []).map((p: BillPayment) => ({
+      ...p,
+      bills: billsData.find((b: Bill) => b.id === p.bill_id) || undefined,
+    }));
+    setPayments(paymentsData);
     setRoutines(routinesData);
     setGroceryNeeded(grocRes.data?.length || 0);
     setCompletedThisWeek(completedRes.count || 0);
@@ -108,7 +116,11 @@ export default function HoyPage() {
     });
     setUserMap(map);
     setUsers(Object.entries(map).map(([id, n]) => ({ id, name: n })));
-    setLoading(false);
+    } catch (err) {
+      console.error("Error loading hoy data:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [supabase, router]);
 
   useEffect(() => { loadData(); }, [loadData]);

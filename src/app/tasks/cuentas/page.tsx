@@ -32,11 +32,15 @@ export default function CuentasPage() {
 
     const [billsRes, paymentsRes] = await Promise.all([
       supabase.from("bills").select("*").order("due_day"),
-      supabase.from("bill_payments").select("*, bills(*)").eq("month", currentMonth).eq("year", currentYear),
+      supabase.from("bill_payments").select("*").eq("month", currentMonth).eq("year", currentYear),
     ]);
 
     const billsList = billsRes.data || [];
     setBills(billsList);
+
+    // Helper to map bill data onto payments client-side
+    const mapBills = (payments: BillPayment[]) =>
+      payments.map(p => ({ ...p, bills: billsList.find((b: Bill) => b.id === p.bill_id) || undefined }));
 
     // Ensure payments exist for all bills this month
     const existingBillIds = new Set((paymentsRes.data || []).map((p: BillPayment) => p.bill_id));
@@ -49,12 +53,11 @@ export default function CuentasPage() {
         year: currentYear,
       }));
       await supabase.from("bill_payments").insert(inserts);
-      // Reload
       const { data: refreshed } = await supabase
-        .from("bill_payments").select("*, bills(*)").eq("month", currentMonth).eq("year", currentYear);
-      setPayments(refreshed || []);
+        .from("bill_payments").select("*").eq("month", currentMonth).eq("year", currentYear);
+      setPayments(mapBills(refreshed || []));
     } else {
-      setPayments(paymentsRes.data || []);
+      setPayments(mapBills(paymentsRes.data || []));
     }
 
     // Auto-create tasks for bills due soon
@@ -150,9 +153,9 @@ export default function CuentasPage() {
       const { data: payment } = await supabase
         .from("bill_payments")
         .insert({ bill_id: data.id, month: currentMonth, year: currentYear })
-        .select("*, bills(*)")
+        .select("*")
         .single();
-      if (payment) setPayments(prev => [...prev, payment]);
+      if (payment) setPayments(prev => [...prev, { ...payment, bills: data }]);
       setNewName("");
       setNewAmount("");
       setNewDueDay("1");
@@ -179,10 +182,10 @@ export default function CuentasPage() {
     for (const { m, y } of months) {
       const { data } = await supabase
         .from("bill_payments")
-        .select("*, bills(*)")
+        .select("*")
         .eq("month", m)
         .eq("year", y);
-      if (data) allPayments.push(...data);
+      if (data) allPayments.push(...data.map(p => ({ ...p, bills: bills.find((b: Bill) => b.id === p.bill_id) || undefined })));
     }
     setHistoryPayments(allPayments);
     setShowHistory(true);
