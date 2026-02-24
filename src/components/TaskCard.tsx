@@ -70,6 +70,11 @@ export default function TaskCard({ task, userId, onComplete, onDelete, userMap }
               📅 {new Date(task.due_date).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
             </span>
           )}
+          {task.budget && (
+            <span className="text-xs text-emerald-400 font-medium">
+              💰 ${new Intl.NumberFormat("es-CL").format(task.budget)}
+            </span>
+          )}
         </div>
       </div>
     </div>

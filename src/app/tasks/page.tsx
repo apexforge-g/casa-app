@@ -117,6 +117,8 @@ export default function TasksPage() {
     assigned_to: string;
     priority: "alta" | "media" | "baja";
     due_date: string | null;
+    budget: number | null;
+    currency: string;
   }) => {
     const { data: newTask } = await supabase
       .from("tasks")

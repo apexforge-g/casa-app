@@ -18,6 +18,8 @@ export interface Task {
   completed_by: string | null;
   completed_at: string | null;
   created_by: string;
+  budget: number | null;
+  currency: string;
   created_at: string;
   categories?: Category;
 }

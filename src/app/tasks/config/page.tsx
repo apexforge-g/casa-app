@@ -199,6 +199,26 @@ export default function ConfigPage() {
             <span className="ml-auto text-slate-600">→</span>
           </div>
         </a>
+        <a href="/tasks/resumen" className="block bg-slate-800/60 rounded-xl p-4 hover:bg-slate-800/80 transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📊</span>
+            <div>
+              <p className="text-sm font-medium">Resumen y Hechas</p>
+              <p className="text-xs text-slate-500">Ver estadísticas y tareas completadas</p>
+            </div>
+            <span className="ml-auto text-slate-600">→</span>
+          </div>
+        </a>
+        <a href="/tasks/completed" className="block bg-slate-800/60 rounded-xl p-4 hover:bg-slate-800/80 transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="text-sm font-medium">Tareas Completadas</p>
+              <p className="text-xs text-slate-500">Historial de tareas hechas</p>
+            </div>
+            <span className="ml-auto text-slate-600">→</span>
+          </div>
+        </a>
       </div>
 
       {/* Sign out */}

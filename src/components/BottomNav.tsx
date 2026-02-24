@@ -4,9 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const tabs = [
+  { href: "/tasks/hoy", label: "Hoy", icon: "🏠" },
   { href: "/tasks", label: "Tareas", icon: "📋" },
   { href: "/tasks/lista", label: "Lista", icon: "🛒" },
-  { href: "/tasks/resumen", label: "Resumen", icon: "📊" },
   { href: "/tasks/config", label: "Config", icon: "⚙️" },
 ];
 
@@ -25,7 +25,7 @@ export default function BottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-col items-center gap-0.5 px-4 py-2 rounded-xl transition-all ${
+              className={`flex flex-col items-center gap-0.5 px-4 py-2 rounded-xl transition-all relative ${
                 isActive
                   ? "text-blue-400 scale-105"
                   : "text-slate-500 hover:text-slate-300"

@@ -12,6 +12,8 @@ interface CreateTaskSheetProps {
     assigned_to: string;
     priority: "alta" | "media" | "baja";
     due_date: string | null;
+    budget: number | null;
+    currency: string;
   }) => void;
   categories: Category[];
   users: { id: string; name: string }[];
@@ -29,6 +31,7 @@ export default function CreateTaskSheet({
   const [assignedTo, setAssignedTo] = useState("both");
   const [priority, setPriority] = useState<"alta" | "media" | "baja">("media");
   const [dueDate, setDueDate] = useState("");
+  const [budget, setBudget] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -37,6 +40,7 @@ export default function CreateTaskSheet({
       setAssignedTo("both");
       setPriority("media");
       setDueDate("");
+      setBudget("");
     }
   }, [open, categories]);
 
@@ -49,6 +53,8 @@ export default function CreateTaskSheet({
       assigned_to: assignedTo,
       priority,
       due_date: dueDate || null,
+      budget: budget ? Number(budget) : null,
+      currency: "CLP",
     });
     onClose();
   };
@@ -125,6 +131,18 @@ export default function CreateTaskSheet({
               onChange={(e) => setDueDate(e.target.value)}
               className="px-3 py-2.5 bg-slate-800 rounded-xl border border-slate-700 text-white text-sm focus:outline-none focus:border-blue-500"
             />
+          </div>
+
+          {/* Budget */}
+          <div className="flex gap-3 items-center">
+            <input
+              type="number"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+              placeholder="💰 Presupuesto (opcional)"
+              className="flex-1 px-3 py-2.5 bg-slate-800 rounded-xl border border-slate-700 text-white text-sm focus:outline-none focus:border-blue-500 placeholder-slate-500"
+            />
+            <span className="text-sm text-slate-500 font-medium">CLP</span>
           </div>
 
           {/* Submit */}
