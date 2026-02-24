@@ -1,312 +1,167 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
-
-interface Task {
-  id: string;
-  title: string;
-  assigned_to: "jorge" | "nancy";
-  status: "pending" | "done";
-  created_by: string;
-  completed_by: string | null;
-  completed_at: string | null;
-  created_at: string;
-}
-
-const PEOPLE = [
-  { value: "jorge", label: "Jorge", email: "jorge@casa-app.local" },
-  { value: "nancy", label: "Nancy", email: "nancy@casa-app.local" },
-];
-
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diff = now - then;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "justo ahora";
-  if (mins < 60) return `hace ${mins} min`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `hace ${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `hace ${days}d`;
-}
-
-function nameFromEmail(email: string | null): string {
-  if (!email) return "?";
-  const p = PEOPLE.find((p) => p.email === email);
-  return p ? p.label : email;
-}
+import { Task, Category } from "@/types";
+import FilterChips from "@/components/FilterChips";
+import TaskCard from "@/components/TaskCard";
+import CreateTaskSheet from "@/components/CreateTaskSheet";
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [assignTo, setAssignTo] = useState("jorge");
-  const [submitting, setSubmitting] = useState(false);
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
-
   const supabase = createClient();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [filter, setFilter] = useState("todas");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [userId, setUserId] = useState<string>("");
+  const [userMap, setUserMap] = useState<Record<string, string>>({});
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const fetchTasks = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from("tasks")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (err) {
-      setError(err.message);
-    } else {
-      setTasks(data ?? []);
-      setError(null);
-    }
+  const loadData = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setUserId(user.id);
+
+    // Build user map from known users
+    const name = user.email?.split("@")[0] || "Yo";
+    const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
+
+    // Fetch all tasks to discover other user IDs
+    const [catRes, taskRes] = await Promise.all([
+      supabase.from("categories").select("*").order("created_at"),
+      supabase
+        .from("tasks")
+        .select("*, categories(*)")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false }),
+    ]);
+
+    setCategories(catRes.data || []);
+    setTasks(taskRes.data || []);
+
+    // Build user map from task data
+    const map: Record<string, string> = { [user.id]: capitalName };
+    (taskRes.data || []).forEach((t: Task) => {
+      if (t.created_by && !map[t.created_by]) {
+        map[t.created_by] = "Otro";
+      }
+    });
+
+    // Hardcode known users for simplicity
+    const allUsers = Object.entries(map).map(([id, n]) => ({ id, name: n }));
+    setUserMap(map);
+    setUsers(allUsers);
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setCurrentUser(data.user?.email ?? null);
-    });
-    fetchTasks();
-  }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const pending = tasks.filter((t) => t.status === "pending");
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-  const completed = tasks.filter(
-    (t) => t.status === "done" && t.completed_at && t.completed_at >= sevenDaysAgo
-  );
+  const filteredTasks = tasks.filter((t) => {
+    if (filter === "mias") return t.assigned_to === userId || t.assigned_to === "both";
+    if (filter === "pendientes") return t.status === "pending";
+    return true;
+  });
 
-  // Stats: done this week (Mon-Sun)
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const monday = new Date(now);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(monday.getDate() - mondayOffset);
-  const mondayISO = monday.toISOString();
+  // Group by category
+  const grouped = filteredTasks.reduce((acc, task) => {
+    const catName = task.categories?.name || "Sin categoría";
+    if (!acc[catName]) acc[catName] = [];
+    acc[catName].push(task);
+    return acc;
+  }, {} as Record<string, Task[]>);
 
-  const jorgeCount = tasks.filter(
-    (t) =>
-      t.status === "done" &&
-      t.completed_at &&
-      t.completed_at >= mondayISO &&
-      t.completed_by === "jorge@casa-app.local"
-  ).length;
-  const nancyCount = tasks.filter(
-    (t) =>
-      t.status === "done" &&
-      t.completed_at &&
-      t.completed_at >= mondayISO &&
-      t.completed_by === "nancy@casa-app.local"
-  ).length;
-
-  async function addTask(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim() || !currentUser) return;
-    setSubmitting(true);
-    setError(null);
-    const { error: err } = await supabase.from("tasks").insert({
-      title: title.trim(),
-      assigned_to: assignTo,
-      created_by: currentUser,
-    });
-    if (err) {
-      setError(err.message);
-    } else {
-      setTitle("");
-    }
-    await fetchTasks();
-    setSubmitting(false);
-  }
-
-  async function markDone(taskId: string) {
-    if (!currentUser) return;
-    setError(null);
-    const { error: err } = await supabase
+  const handleComplete = async (id: string) => {
+    await supabase
       .from("tasks")
-      .update({
-        status: "done",
-        completed_by: currentUser,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", taskId);
-    if (err) setError(err.message);
-    await fetchTasks();
-  }
+      .update({ status: "completed", completed_by: userId, completed_at: new Date().toISOString() })
+      .eq("id", id);
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+  };
 
-  async function deleteTask(taskId: string) {
-    setError(null);
-    const { error: err } = await supabase.from("tasks").delete().eq("id", taskId);
-    if (err) setError(err.message);
-    await fetchTasks();
+  const handleDelete = async (id: string) => {
+    await supabase.from("tasks").delete().eq("id", id);
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleCreate = async (data: {
+    title: string;
+    category_id: string | null;
+    assigned_to: string;
+    priority: "alta" | "media" | "baja";
+    due_date: string | null;
+  }) => {
+    const { data: newTask } = await supabase
+      .from("tasks")
+      .insert({ ...data, created_by: userId, status: "pending" })
+      .select("*, categories(*)")
+      .single();
+    if (newTask) setTasks((prev) => [newTask, ...prev]);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-slate-500 text-lg">Cargando...</div>
+      </div>
+    );
   }
 
   return (
-    <main className="min-h-screen px-4 py-12 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-          🏠 Casa App
-        </h1>
-        <Link
-          href="/"
-          className="text-sm text-slate-400 hover:text-white transition-colors"
-        >
-          Inicio
-        </Link>
+    <div className="max-w-lg mx-auto">
+      {/* Header */}
+      <div className="px-4 pt-6 pb-2">
+        <h1 className="text-2xl font-bold">🏠 Tareas</h1>
+        <p className="text-sm text-slate-500 mt-1">{tasks.length} pendientes</p>
       </div>
 
-      {/* Stats */}
-      <div className="flex gap-4 mb-6 text-sm">
-        <div className="px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
-          <span className="text-blue-400 font-medium">Jorge:</span>{" "}
-          <span className="text-white font-bold">{jorgeCount}</span>{" "}
-          <span className="text-slate-400">esta semana</span>
-        </div>
-        <div className="px-4 py-2 rounded-xl bg-pink-500/10 border border-pink-500/20">
-          <span className="text-pink-400 font-medium">Nancy:</span>{" "}
-          <span className="text-white font-bold">{nancyCount}</span>{" "}
-          <span className="text-slate-400">esta semana</span>
-        </div>
-      </div>
+      <FilterChips active={filter} onChange={setFilter} />
 
-      {error && (
-        <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* Add Task Form */}
-      <form onSubmit={addTask} className="flex gap-2 mb-8">
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Nueva tarea..."
-          className="flex-1 px-4 py-2 rounded-xl bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
-        />
-        <select
-          value={assignTo}
-          onChange={(e) => setAssignTo(e.target.value)}
-          className="px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-700/50 text-white focus:outline-none focus:border-blue-500 transition-colors"
-        >
-          {PEOPLE.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          disabled={submitting || !title.trim()}
-          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {submitting ? "..." : "Agregar"}
-        </button>
-      </form>
-
-      {loading ? (
-        <p className="text-slate-400 text-center py-8">Cargando...</p>
-      ) : (
-        <>
-          {/* Pending Tasks */}
-          <h2 className="text-lg font-semibold text-white mb-3">
-            Pendientes ({pending.length})
-          </h2>
-          {pending.length === 0 ? (
-            <p className="text-slate-500 text-sm mb-8">¡Todo al día! 🎉</p>
-          ) : (
-            <div className="space-y-2 mb-8">
-              {pending.map((task) => (
-                <div
-                  key={task.id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-slate-800/50 border border-slate-700/50"
-                >
-                  <div>
-                    <p className="text-white font-medium">{task.title}</p>
-                    <p className="text-sm text-slate-400">
-                      → {task.assigned_to === "jorge" ? "Jorge" : "Nancy"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => markDone(task.id)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
-                    >
-                      Done ✓
-                    </button>
-                    <button
-                      onClick={() => deleteTask(task.id)}
-                      className="text-slate-600 hover:text-red-400 transition-colors p-1"
-                      title="Eliminar"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Completed Tasks */}
-          <h2 className="text-lg font-semibold text-slate-400 mb-3">
-            Completadas (últimos 7 días)
-          </h2>
-          {completed.length === 0 ? (
-            <p className="text-slate-600 text-sm">Nada completado aún</p>
-          ) : (
+      {/* Task groups */}
+      <div className="px-4 space-y-6 pb-4">
+        {Object.keys(grouped).length === 0 && (
+          <div className="text-center py-16 text-slate-500">
+            <p className="text-4xl mb-3">🎉</p>
+            <p className="text-lg font-medium">¡Sin tareas pendientes!</p>
+            <p className="text-sm mt-1">Toca + para agregar una</p>
+          </div>
+        )}
+        {Object.entries(grouped).map(([catName, catTasks]) => (
+          <div key={catName}>
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">
+              {catTasks[0]?.categories?.emoji} {catName}
+            </h2>
             <div className="space-y-2">
-              {completed.map((task) => (
-                <div
+              {catTasks.map((task) => (
+                <TaskCard
                   key={task.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-800/20 border border-slate-800/50"
-                >
-                  <div>
-                    <p className="text-slate-500 line-through text-sm">
-                      {task.title}
-                    </p>
-                    <p className="text-xs text-slate-600">
-                      ✓ {nameFromEmail(task.completed_by)} ·{" "}
-                      {task.completed_at ? timeAgo(task.completed_at) : ""}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => deleteTask(task.id)}
-                    className="text-slate-700 hover:text-red-400 transition-colors p-1"
-                    title="Eliminar"
-                  >
-                    <svg
-                      className="w-3 h-3"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
+                  task={task}
+                  userId={userId}
+                  onComplete={handleComplete}
+                  onDelete={handleDelete}
+                  userMap={userMap}
+                />
               ))}
             </div>
-          )}
-        </>
-      )}
-    </main>
+          </div>
+        ))}
+      </div>
+
+      {/* FAB */}
+      <button
+        onClick={() => setSheetOpen(true)}
+        className="fixed bottom-20 right-4 w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center text-2xl transition-transform hover:scale-105 active:scale-95 z-40"
+      >
+        +
+      </button>
+
+      <CreateTaskSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onSubmit={handleCreate}
+        categories={categories}
+        users={users}
+      />
+    </div>
   );
 }

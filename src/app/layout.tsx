@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import NavBar from "@/components/NavBar";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Casa App - Tareas del Hogar",
-  description: "Gestión de tareas del hogar",
+  description: "Gestión de tareas del hogar para Jorge y Nancy",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
 };
 
 export default function RootLayout({
@@ -14,12 +14,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className="antialiased text-white flex flex-col min-h-screen">
-        <NavBar />
-        <div className="flex-1">{children}</div>
-        <footer className="text-center text-slate-600 text-sm py-4">
-          Jorge & Nancy 🏠 2026
-        </footer>
+      <body className="antialiased min-h-screen bg-slate-950 text-slate-100">
+        {children}
       </body>
     </html>
   );
