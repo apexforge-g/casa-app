@@ -13,7 +13,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className="antialiased text-white">{children}</body>
+      <body className="antialiased text-white flex flex-col min-h-screen">
+        <div className="flex-1">{children}</div>
+        <footer className="text-center text-slate-600 text-sm py-4">
+          Jorge & Nancy 🏠 2026
+        </footer>
+      </body>
     </html>
   );
 }
