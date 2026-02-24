@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import NavBar from "@/components/NavBar";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="antialiased text-white flex flex-col min-h-screen">
+        <NavBar />
         <div className="flex-1">{children}</div>
         <footer className="text-center text-slate-600 text-sm py-4">
           Jorge & Nancy 🏠 2026
