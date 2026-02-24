@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
-import { Task, Category, Bill, BillPayment, Routine, GroceryItem } from "@/types";
+import { useState, useMemo } from "react";
+import { useData } from "@/context/DataContext";
+import { Task, Bill, Routine } from "@/types";
 import CreateTaskSheet from "@/components/CreateTaskSheet";
 import Link from "next/link";
 
@@ -38,109 +37,28 @@ function isRoutineOverdue(routine: Routine): boolean {
 }
 
 export default function HoyPage() {
-  const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-  const [userName, setUserName] = useState("");
-  const [userId, setUserId] = useState("");
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [payments, setPayments] = useState<BillPayment[]>([]);
-  const [routines, setRoutines] = useState<Routine[]>([]);
-  const [groceryNeeded, setGroceryNeeded] = useState(0);
-  const [completedThisWeek, setCompletedThisWeek] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const {
+    userName, userId, tasks, categories, bills, payments, routines,
+    groceryNeeded, completedThisWeek, completeTask, createTask, users,
+  } = useData();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
-  const [userMap, setUserMap] = useState<Record<string, string>>({});
 
-  const loadData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push("/login"); return; }
-
-    const name = user.email?.split("@")[0] || "Yo";
-    const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
-    setUserName(capitalName);
-    setUserId(user.id);
-
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-
-    try {
-    const [catRes, taskRes, billRes, payRes, routRes, grocRes, completedRes] = await Promise.all([
-      supabase.from("categories").select("*").order("created_at"),
-      supabase.from("tasks").select("*").eq("status", "pending").order("created_at", { ascending: false }),
-      supabase.from("bills").select("*"),
-      supabase.from("bill_payments").select("*").eq("month", month).eq("year", year),
-      supabase.from("routines").select("*").order("created_at"),
-      supabase.from("grocery_items").select("*").in("status", ["needed", "low"]),
-      supabase.from("tasks").select("id", { count: "exact" }).eq("status", "completed").gte("completed_at", new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString()),
-    ]);
-
-    const tasksData = taskRes.data || [];
-    const billsData = billRes.data || [];
-    const routinesData = routRes.data || [];
-
-    // Check if we need to seed
-    if (tasksData.length === 0 && billsData.length === 0 && routinesData.length === 0) {
-      try {
-        await fetch("/api/seed", { method: "POST" });
-        setTimeout(() => loadData(), 500);
-        return;
-      } catch {
-        // Seed failed, continue with empty data
-      }
-    }
-
-    const cats = catRes.data || [];
-    const catMap = Object.fromEntries(cats.map(c => [c.id, c]));
-    setCategories(cats);
-    const tasksWithCats = tasksData.map((t: Task) => ({ ...t, categories: t.category_id ? catMap[t.category_id] : undefined }));
-    setTasks(tasksWithCats);
-    setBills(billsData);
-
-    // Map bill data onto payments client-side
-    const paymentsData = (payRes.data || []).map((p: BillPayment) => ({
-      ...p,
-      bills: billsData.find((b: Bill) => b.id === p.bill_id) || undefined,
-    }));
-    setPayments(paymentsData);
-    setRoutines(routinesData);
-    setGroceryNeeded(grocRes.data?.length || 0);
-    setCompletedThisWeek(completedRes.count || 0);
-
-    const map: Record<string, string> = { [user.id]: capitalName };
-    tasksData.forEach((t: Task) => {
-      if (t.created_by && !map[t.created_by]) map[t.created_by] = "Otro";
-    });
-    setUserMap(map);
-    setUsers(Object.entries(map).map(([id, n]) => ({ id, name: n })));
-    } catch (err) {
-      console.error("Error loading hoy data:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase, router]);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  // Derived data
   const today = new Date().toISOString().slice(0, 10);
   const todayDate = new Date().getDate();
 
   const pendingTasks = tasks.filter(t => t.status === "pending");
-  const todayTasks = pendingTasks.filter(t =>
-    (t.assigned_to === userId || t.assigned_to === "both") &&
-    (!t.due_date || t.due_date <= today)
-  ).sort((a, b) => {
-    const prio = { alta: 0, media: 1, baja: 2 };
-    return prio[a.priority] - prio[b.priority];
-  });
+  const todayTasks = useMemo(() =>
+    pendingTasks.filter(t =>
+      (t.assigned_to === userId || t.assigned_to === "both") &&
+      (!t.due_date || t.due_date <= today)
+    ).sort((a, b) => {
+      const prio = { alta: 0, media: 1, baja: 2 };
+      return prio[a.priority] - prio[b.priority];
+    }),
+  [pendingTasks, userId, today]);
 
   const budgetTotal = pendingTasks.filter(t => t.budget).reduce((sum, t) => sum + (t.budget || 0), 0);
 
-  // Urgent items
   const urgentBills = bills.filter(b => {
     const payment = payments.find(p => p.bill_id === b.id);
     if (payment?.paid) return false;
@@ -152,13 +70,9 @@ export default function HoyPage() {
   const highPriorityTasks = pendingTasks.filter(t => t.priority === "alta");
   const hasUrgent = urgentBills.length > 0 || overdueRoutines.length > 0 || highPriorityTasks.length > 0;
 
-  // Routines sorted by urgency
   const sortedRoutines = [...routines].sort((a, b) => getRoutineProgress(b) - getRoutineProgress(a)).slice(0, 5);
 
-  const handleComplete = async (id: string) => {
-    await supabase.from("tasks").update({ status: "completed", completed_by: userId, completed_at: new Date().toISOString() }).eq("id", id);
-    setTasks(prev => prev.filter(t => t.id !== id));
-  };
+  const handleComplete = async (id: string) => { await completeTask(id); };
 
   const handleCreate = async (data: {
     title: string;
@@ -168,34 +82,14 @@ export default function HoyPage() {
     due_date: string | null;
     budget: number | null;
     currency: string;
-  }) => {
-    const { data: newTask } = await supabase
-      .from("tasks")
-      .insert({ ...data, created_by: userId, status: "pending" })
-      .select("*")
-      .single();
-    if (newTask) {
-      const cat = categories.find(c => c.id === newTask.category_id);
-      setTasks(prev => [{ ...newTask, categories: cat }, ...prev]);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-slate-500 text-lg">Cargando...</div>
-      </div>
-    );
-  }
+  }) => { await createTask(data); };
 
   return (
     <div className="max-w-lg mx-auto">
-      {/* Header */}
       <div className="px-4 pt-6 pb-2">
         <h1 className="text-2xl font-bold">{getGreeting()}, {userName} 👋</h1>
       </div>
 
-      {/* Quick Stats */}
       <div className="px-4 py-3 flex gap-3">
         <div className="flex-1 bg-slate-800/60 rounded-xl p-3 text-center">
           <p className="text-2xl font-bold text-blue-400">{pendingTasks.length}</p>
@@ -211,14 +105,12 @@ export default function HoyPage() {
         </div>
       </div>
 
-      {/* Budget summary */}
       {budgetTotal > 0 && (
         <div className="mx-4 mb-3 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
           <span className="text-sm text-emerald-400 font-medium">💰 Pendientes con presupuesto: {formatCLP(budgetTotal)} total</span>
         </div>
       )}
 
-      {/* Urgent section */}
       {hasUrgent && (
         <div className="mx-4 mb-4">
           <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider mb-2 px-1">⚠️ Urgente</h2>
@@ -253,7 +145,6 @@ export default function HoyPage() {
         </div>
       )}
 
-      {/* My tasks today */}
       <div className="mx-4 mb-4">
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">📋 Mis tareas de hoy</h2>
         {todayTasks.length === 0 ? (
@@ -293,7 +184,6 @@ export default function HoyPage() {
         )}
       </div>
 
-      {/* Grocery */}
       <Link href="/tasks/lista" className="block mx-4 mb-4 bg-slate-800/60 rounded-xl p-4 hover:bg-slate-800/80 transition-colors">
         <div className="flex items-center gap-3">
           <span className="text-2xl">🛒</span>
@@ -305,7 +195,6 @@ export default function HoyPage() {
         </div>
       </Link>
 
-      {/* Routines */}
       <div className="mx-4 mb-4">
         <div className="flex items-center justify-between mb-2 px-1">
           <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">🧹 Rutinas</h2>
@@ -330,7 +219,6 @@ export default function HoyPage() {
         </div>
       </div>
 
-      {/* FAB */}
       <button
         onClick={() => setSheetOpen(true)}
         className="fixed bottom-20 right-4 w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center text-2xl transition-transform hover:scale-105 active:scale-95 z-40"

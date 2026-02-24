@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { createClient } from "@/lib/supabase";
-import { Task, Bill, BillPayment, Routine } from "@/types";
+import { useData } from "@/context/DataContext";
 import Link from "next/link";
 
 function timeAgo(date: string | null): string {
@@ -15,49 +13,7 @@ function timeAgo(date: string | null): string {
 }
 
 export default function ResumenPage() {
-  const supabase = useMemo(() => createClient(), []);
-  const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [payments, setPayments] = useState<BillPayment[]>([]);
-  const [routines, setRoutines] = useState<Routine[]>([]);
-  const [userMap, setUserMap] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-
-  const loadData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const name = user.email?.split("@")[0] || "Yo";
-    const map: Record<string, string> = { [user.id]: name.charAt(0).toUpperCase() + name.slice(1) };
-
-    const [tasksRes, billsRes, paymentsRes, routinesRes] = await Promise.all([
-      supabase.from("tasks").select("*").eq("status", "completed").order("completed_at", { ascending: false }).limit(20),
-      supabase.from("bills").select("*").order("due_day"),
-      supabase.from("bill_payments").select("*").eq("month", currentMonth).eq("year", currentYear),
-      supabase.from("routines").select("*").order("created_at"),
-    ]);
-
-    const billsData = billsRes.data || [];
-    setCompletedTasks(tasksRes.data || []);
-    setBills(billsData);
-    setPayments((paymentsRes.data || []).map((p: BillPayment) => ({
-      ...p,
-      bills: billsData.find((b: Bill) => b.id === p.bill_id) || undefined,
-    })));
-    setRoutines(routinesRes.data || []);
-
-    (tasksRes.data || []).forEach((t: Task) => {
-      if (t.completed_by && !map[t.completed_by]) map[t.completed_by] = "Otro";
-    });
-    setUserMap(map);
-    setLoading(false);
-  }, [supabase, currentMonth, currentYear]);
-
-  useEffect(() => { loadData(); }, [loadData]);
+  const { completedTasks, bills, payments, routines, userMap } = useData();
 
   const paidCount = payments.filter(p => p.paid).length;
   const overdueRoutines = routines.filter(r => {
@@ -65,17 +21,12 @@ export default function ResumenPage() {
     return (Date.now() - new Date(r.last_done_at).getTime()) / (1000 * 60 * 60 * 24) > r.frequency_days;
   });
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-screen"><div className="text-slate-500 text-lg">Cargando...</div></div>;
-  }
-
   return (
     <div className="max-w-lg mx-auto pb-24">
       <div className="px-4 pt-6 pb-4">
         <h1 className="text-2xl font-bold">📊 Resumen</h1>
       </div>
 
-      {/* Quick stats */}
       <div className="px-4 grid grid-cols-2 gap-3 mb-6">
         <div className="bg-slate-800/60 rounded-xl p-4 text-center">
           <p className="text-3xl font-bold text-green-400">{paidCount}/{bills.length}</p>
@@ -87,7 +38,6 @@ export default function ResumenPage() {
         </div>
       </div>
 
-      {/* Bills status */}
       <div className="px-4 mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">💰 Cuentas del mes</h2>
@@ -109,7 +59,6 @@ export default function ResumenPage() {
         </div>
       </div>
 
-      {/* Routines status */}
       <div className="px-4 mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">🧹 Rutinas</h2>
@@ -131,7 +80,6 @@ export default function ResumenPage() {
         </div>
       </div>
 
-      {/* Recent completed tasks */}
       <div className="px-4 mb-6">
         <h2 className="text-lg font-semibold mb-3">✅ Tareas completadas</h2>
         <div className="space-y-2">
