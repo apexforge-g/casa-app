@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { Task, Category } from "@/types";
 import FilterChips from "@/components/FilterChips";
@@ -8,6 +9,7 @@ import TaskCard from "@/components/TaskCard";
 import CreateTaskSheet from "@/components/CreateTaskSheet";
 
 export default function TasksPage() {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -20,7 +22,10 @@ export default function TasksPage() {
 
   const loadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
     setUserId(user.id);
 
     // Build user map from known users
