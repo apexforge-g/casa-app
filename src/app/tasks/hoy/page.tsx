@@ -69,7 +69,7 @@ export default function HoyPage() {
 
     const [catRes, taskRes, billRes, payRes, routRes, grocRes, completedRes] = await Promise.all([
       supabase.from("categories").select("*").order("created_at"),
-      supabase.from("tasks").select("*, categories(*)").eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("tasks").select("*").eq("status", "pending").order("created_at", { ascending: false }),
       supabase.from("bills").select("*"),
       supabase.from("bill_payments").select("*, bills(*)").eq("month", month).eq("year", year),
       supabase.from("routines").select("*").order("created_at"),
@@ -91,8 +91,11 @@ export default function HoyPage() {
       } catch {}
     }
 
-    setCategories(catRes.data || []);
-    setTasks(tasksData);
+    const cats = catRes.data || [];
+    const catMap = Object.fromEntries(cats.map(c => [c.id, c]));
+    setCategories(cats);
+    const tasksWithCats = tasksData.map((t: Task) => ({ ...t, categories: t.category_id ? catMap[t.category_id] : undefined }));
+    setTasks(tasksWithCats);
     setBills(billsData);
     setPayments(payRes.data || []);
     setRoutines(routinesData);
@@ -157,9 +160,12 @@ export default function HoyPage() {
     const { data: newTask } = await supabase
       .from("tasks")
       .insert({ ...data, created_by: userId, status: "pending" })
-      .select("*, categories(*)")
+      .select("*")
       .single();
-    if (newTask) setTasks(prev => [newTask, ...prev]);
+    if (newTask) {
+      const cat = categories.find(c => c.id === newTask.category_id);
+      setTasks(prev => [{ ...newTask, categories: cat }, ...prev]);
+    }
   };
 
   if (loading) {

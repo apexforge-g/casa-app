@@ -35,13 +35,13 @@ export default function CompletedPage() {
     const name = user.email?.split("@")[0] || "Yo";
     const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
 
-    const { data } = await supabase
-      .from("tasks")
-      .select("*, categories(*)")
-      .eq("status", "completed")
-      .order("completed_at", { ascending: false });
+    const [taskRes, catRes] = await Promise.all([
+      supabase.from("tasks").select("*").eq("status", "completed").order("completed_at", { ascending: false }),
+      supabase.from("categories").select("*"),
+    ]);
 
-    const taskList = data || [];
+    const catMap = Object.fromEntries((catRes.data || []).map(c => [c.id, c]));
+    const taskList = (taskRes.data || []).map((t: Task) => ({ ...t, categories: t.category_id ? catMap[t.category_id] : undefined }));
     setTasks(taskList);
 
     const map: Record<string, string> = { [user.id]: capitalName };

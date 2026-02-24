@@ -38,13 +38,15 @@ export default function TasksPage() {
       supabase.from("categories").select("*").order("created_at"),
       supabase
         .from("tasks")
-        .select("*, categories(*)")
+        .select("*")
         .eq("status", "pending")
         .order("created_at", { ascending: false }),
     ]);
 
-    setCategories(catRes.data || []);
-    setTasks(taskRes.data || []);
+    const cats = catRes.data || [];
+    const catMap = Object.fromEntries(cats.map(c => [c.id, c]));
+    setCategories(cats);
+    setTasks((taskRes.data || []).map((t: Task) => ({ ...t, categories: t.category_id ? catMap[t.category_id] : undefined })));
 
     // Build user map from task data
     const map: Record<string, string> = { [user.id]: capitalName };
@@ -123,9 +125,12 @@ export default function TasksPage() {
     const { data: newTask } = await supabase
       .from("tasks")
       .insert({ ...data, created_by: userId, status: "pending" })
-      .select("*, categories(*)")
+      .select("*")
       .single();
-    if (newTask) setTasks((prev) => [newTask, ...prev]);
+    if (newTask) {
+      const cat = categories.find(c => c.id === newTask.category_id);
+      setTasks((prev) => [{ ...newTask, categories: cat }, ...prev]);
+    }
   };
 
   if (loading) {

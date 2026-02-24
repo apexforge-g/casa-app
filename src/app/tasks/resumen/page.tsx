@@ -35,7 +35,7 @@ export default function ResumenPage() {
     const map: Record<string, string> = { [user.id]: name.charAt(0).toUpperCase() + name.slice(1) };
 
     const [tasksRes, billsRes, paymentsRes, routinesRes] = await Promise.all([
-      supabase.from("tasks").select("*, categories(*)").eq("status", "completed").order("completed_at", { ascending: false }).limit(20),
+      supabase.from("tasks").select("*").eq("status", "completed").order("completed_at", { ascending: false }).limit(20),
       supabase.from("bills").select("*").order("due_day"),
       supabase.from("bill_payments").select("*, bills(*)").eq("month", currentMonth).eq("year", currentYear),
       supabase.from("routines").select("*").order("created_at"),
