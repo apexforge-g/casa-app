@@ -28,7 +28,7 @@ export interface GroceryItem {
   id: string;
   name: string;
   category: string;
-  status: 'stocked' | 'low' | 'needed' | 'in_cart';
+  status: 'stocked' | 'needed';
   quantity: string | null;
   typical_qty: string | null;
   brand: string | null;

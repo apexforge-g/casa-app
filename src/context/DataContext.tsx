@@ -273,17 +273,64 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase, tasks]);
 
+  const syncSupermarketTask = useCallback(async (items: GroceryItem[]) => {
+    const neededCount = items.filter(i => i.status === "needed").length;
+    const taskTitle = `🛒 Ir al supermercado (${neededCount} items)`;
+    
+    // Find existing supermarket task
+    const { data: existingTasks } = await supabase
+      .from("tasks")
+      .select("*")
+      .like("title", "🛒 Ir al supermercado%")
+      .eq("status", "pending")
+      .limit(1);
+    
+    const existingTask = existingTasks?.[0];
+    
+    if (neededCount > 0) {
+      if (existingTask) {
+        // Update count in title
+        if (existingTask.title !== taskTitle) {
+          await supabase.from("tasks").update({ title: taskTitle }).eq("id", existingTask.id);
+        }
+      } else {
+        // Create new task
+        await supabase.from("tasks").insert({
+          title: taskTitle,
+          status: "pending",
+          priority: "media",
+          assigned_to: userId,
+          created_by: userId,
+          currency: "CLP",
+        });
+      }
+    } else if (existingTask) {
+      // All done — complete the task
+      await supabase.from("tasks").update({
+        status: "completed",
+        completed_by: userId,
+        completed_at: new Date().toISOString(),
+      }).eq("id", existingTask.id);
+    }
+    
+    // Refresh tasks to reflect changes
+    refreshTasks();
+  }, [supabase, userId, refreshTasks]);
+
   const updateGroceryStatus = useCallback(async (id: string, status: string) => {
     const prev = groceryItems;
     const updates: Record<string, unknown> = { status };
     if (status === "stocked") updates.last_stocked_at = new Date().toISOString();
-    setGroceryItems(items => items.map(i => i.id === id ? { ...i, status: status as GroceryItem["status"], ...(status === "stocked" ? { last_stocked_at: new Date().toISOString() } : {}) } : i));
+    const newItems = prev.map(i => i.id === id ? { ...i, status: status as GroceryItem["status"], ...(status === "stocked" ? { last_stocked_at: new Date().toISOString() } : {}) } : i);
+    setGroceryItems(newItems);
     const { error } = await supabase.from("grocery_items").update(updates).eq("id", id);
     if (error) {
       console.error("Failed to update grocery status:", error);
       setGroceryItems(prev);
+      return;
     }
-  }, [supabase, groceryItems]);
+    syncSupermarketTask(newItems);
+  }, [supabase, groceryItems, syncSupermarketTask]);
 
   const addGroceryItem = useCallback(async (data: { name: string; category: string; quantity: string | null; typical_qty?: string | null; brand?: string | null; frequency_days?: number | null }): Promise<GroceryItem | null> => {
     const { data: item, error } = await supabase
@@ -295,19 +342,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.error("Failed to add grocery item:", error);
       return null;
     }
-    setGroceryItems(prev => [...prev, item]);
+    const newItems = [...groceryItems, item];
+    setGroceryItems(newItems);
+    syncSupermarketTask(newItems);
     return item;
-  }, [supabase, userId]);
+  }, [supabase, userId, groceryItems, syncSupermarketTask]);
 
   const deleteGroceryItem = useCallback(async (id: string) => {
     const prev = groceryItems;
-    setGroceryItems(items => items.filter(i => i.id !== id));
+    const newItems = prev.filter(i => i.id !== id);
+    setGroceryItems(newItems);
     const { error } = await supabase.from("grocery_items").delete().eq("id", id);
     if (error) {
       console.error("Failed to delete grocery item:", error);
       setGroceryItems(prev);
+      return;
     }
-  }, [supabase, groceryItems]);
+    syncSupermarketTask(newItems);
+  }, [supabase, groceryItems, syncSupermarketTask]);
 
   const toggleBillPaid = useCallback(async (payment: BillPayment) => {
     const newPaid = !payment.paid;
@@ -430,7 +482,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const groceryNeeded = useMemo(() =>
-    groceryItems.filter(i => i.status === "needed" || i.status === "low").length,
+    groceryItems.filter(i => i.status === "needed").length,
   [groceryItems]);
 
   const value = useMemo<DataContextType>(() => ({
