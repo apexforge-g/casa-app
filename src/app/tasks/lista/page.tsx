@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useData } from "@/context/DataContext";
 import { GroceryItem, GROCERY_CATEGORIES } from "@/types";
 
@@ -12,6 +12,10 @@ function shouldShowFrequencyHint(item: GroceryItem): boolean {
   if (!item.last_stocked_at || !item.frequency_days || item.status !== "stocked") return false;
   const elapsed = (Date.now() - new Date(item.last_stocked_at).getTime()) / (1000 * 60 * 60 * 24);
   return elapsed > item.frequency_days * 0.8;
+}
+
+function normalize(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function groupByCategory(items: GroceryItem[]): [string, GroceryItem[]][] {
@@ -35,6 +39,37 @@ export default function ListaPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [tenemosOpen, setTenemosOpen] = useState(false);
   const [animatingOut, setAnimatingOut] = useState<Set<string>>(new Set());
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  const suggestions = useMemo(() => {
+    const q = newName.trim();
+    if (!q) return [];
+    const nq = normalize(q);
+    return groceryItems
+      .filter(item => normalize(item.name).includes(nq))
+      .slice(0, 6);
+  }, [newName, groceryItems]);
+
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(null), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
+
+  const handleSelectSuggestion = useCallback(async (item: GroceryItem) => {
+    if (item.status === "stocked") {
+      await updateGroceryStatus(item.id, "needed");
+      setToast(`"${item.name}" → Falta`);
+    } else {
+      setToast(`"${item.name}" ya está en Falta`);
+    }
+    setNewName("");
+    setShowSuggestions(false);
+  }, [updateGroceryStatus]);
 
   const faltaItems = useMemo(() => groceryItems.filter(i => i.status === "needed"), [groceryItems]);
   const tenemosItems = useMemo(() => groceryItems.filter(i => i.status === "stocked"), [groceryItems]);
@@ -132,24 +167,84 @@ export default function ListaPage() {
         </p>
       </div>
 
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-700 text-slate-100 px-4 py-2 rounded-xl text-sm shadow-lg animate-pulse">
+          {toast}
+        </div>
+      )}
+
       {/* Quick Add */}
       <div className="px-4 py-3">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && addItem()}
-            placeholder="Agregar item..."
-            className="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-          />
-          <button
-            onClick={addItem}
-            disabled={!newName.trim()}
-            className="bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
-          >
-            +
-          </button>
+        <div className="relative">
+          <div className="flex gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={newName}
+              onChange={e => { setNewName(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && suggestions.length === 0 && newName.trim()) {
+                  addItem();
+                } else if (e.key === "Enter" && suggestions.length > 0) {
+                  handleSelectSuggestion(suggestions[0]);
+                } else if (e.key === "Escape") {
+                  setShowSuggestions(false);
+                }
+              }}
+              placeholder="Buscar o agregar item..."
+              className="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={addItem}
+              disabled={!newName.trim()}
+              className="bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Suggestions Dropdown */}
+          {showSuggestions && newName.trim() && (
+            <div
+              ref={suggestionsRef}
+              className="absolute left-0 right-12 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl z-40"
+              onMouseDown={e => e.preventDefault()}
+            >
+              {suggestions.map(item => {
+                const catInfo = getCategoryInfo(item.category);
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSelectSuggestion(item)}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-slate-700/60 transition-colors text-left"
+                  >
+                    <span className="text-sm">{catInfo.emoji}</span>
+                    <span className="text-sm text-slate-100 truncate">{item.name}</span>
+                    {item.brand && <span className="text-xs text-slate-500 truncate">{item.brand}</span>}
+                    {item.quantity && <span className="text-xs text-slate-600">×{item.quantity}</span>}
+                    <span className={`ml-auto text-xs px-1.5 py-0.5 rounded-md whitespace-nowrap ${
+                      item.status === "stocked"
+                        ? "bg-green-900/40 text-green-400"
+                        : "bg-red-900/40 text-red-400"
+                    }`}>
+                      {item.status === "stocked" ? "✅ Tenemos" : "❌ Falta"}
+                    </span>
+                  </button>
+                );
+              })}
+              {/* Add new option */}
+              <button
+                onClick={() => { setShowSuggestions(false); setShowAdvanced(true); }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-slate-700/60 transition-colors text-left border-t border-slate-700/50"
+              >
+                <span className="text-sm">➕</span>
+                <span className="text-sm text-blue-400">Agregar &ldquo;{newName.trim()}&rdquo; como nuevo</span>
+              </button>
+            </div>
+          )}
         </div>
         <button
           onClick={() => setShowAdvanced(!showAdvanced)}
