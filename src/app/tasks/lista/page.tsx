@@ -13,7 +13,7 @@ function normalize(s: string): string {
 }
 
 function groupByCategory(items: GroceryItem[]): [string, GroceryItem[]][] {
-  const order = GROCERY_CATEGORIES.map(c => c.id);
+  const order: string[] = GROCERY_CATEGORIES.map(c => c.id);
   const grouped: Record<string, GroceryItem[]> = {};
   for (const item of items) {
     const catInfo = getCategoryInfo(item.category);
