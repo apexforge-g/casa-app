@@ -35,19 +35,19 @@ export async function POST() {
 
   // Seed grocery items
   const groceries = [
-    { name: "Leche", category: "lacteos" },
-    { name: "Huevos", category: "lacteos" },
-    { name: "Pan", category: "despensa" },
-    { name: "Arroz", category: "despensa" },
+    { name: "Leche entera Colun", category: "lacteos" },
+    { name: "Huevos x12", category: "lacteos" },
+    { name: "Pan molde", category: "despensa" },
+    { name: "Arroz 1kg", category: "despensa" },
     { name: "Fideos", category: "despensa" },
     { name: "Aceite", category: "despensa" },
     { name: "Papel higiénico", category: "higiene" },
     { name: "Jabón", category: "higiene" },
-    { name: "Detergente", category: "limpieza" },
-    { name: "Frutas", category: "frutas" },
-    { name: "Verduras", category: "verduras" },
-    { name: "Pollo", category: "carnes" },
-    { name: "Carne", category: "carnes" },
+    { name: "Detergente ropa", category: "limpieza" },
+    { name: "Frutas de temporada", category: "frutas" },
+    { name: "Verduras varias", category: "verduras" },
+    { name: "Pechuga de pollo", category: "carnes" },
+    { name: "Carne molida", category: "carnes" },
   ];
   await supabase.from("grocery_items").insert(
     groceries.map(g => ({ ...g, status: "stocked", created_by: user.id }))

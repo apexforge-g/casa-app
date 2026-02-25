@@ -37,7 +37,7 @@ interface DataContextType {
   }) => Promise<Task | null>;
   deleteTask: (id: string) => Promise<void>;
   updateGroceryStatus: (id: string, status: string) => Promise<void>;
-  addGroceryItem: (data: { name: string; category: string; quantity: string | null; typical_qty?: string | null; brand?: string | null; frequency_days?: number | null }) => Promise<GroceryItem | null>;
+  addGroceryItem: (data: { name: string; category: string }) => Promise<GroceryItem | null>;
   deleteGroceryItem: (id: string) => Promise<void>;
   toggleBillPaid: (payment: BillPayment) => Promise<void>;
   markRoutineDone: (routine: Routine) => Promise<void>;
@@ -332,7 +332,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     syncSupermarketTask(newItems);
   }, [supabase, groceryItems, syncSupermarketTask]);
 
-  const addGroceryItem = useCallback(async (data: { name: string; category: string; quantity: string | null; typical_qty?: string | null; brand?: string | null; frequency_days?: number | null }): Promise<GroceryItem | null> => {
+  const addGroceryItem = useCallback(async (data: { name: string; category: string }): Promise<GroceryItem | null> => {
     const { data: item, error } = await supabase
       .from("grocery_items")
       .insert({ ...data, status: "needed" as const, created_by: userId })
