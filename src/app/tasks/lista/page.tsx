@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useData } from "@/context/DataContext";
 import { GroceryItem, GROCERY_CATEGORIES } from "@/types";
 
@@ -14,16 +14,35 @@ const STATUS_CONFIG = {
   in_cart: { label: "En el carro", emoji: "🛒", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
 };
 
-function getCategoryInfo(name: string) {
-  return GROCERY_CATEGORIES.find(c => c.name === name) || { name, emoji: "📦", color: "#94A3B8" };
+function getCategoryInfo(cat: string) {
+  return GROCERY_CATEGORIES.find(c => c.name === cat || c.id === cat) || { id: "otros", name: cat, emoji: "📦", color: "#94A3B8" };
+}
+
+function getFrequencyBadge(days: number | null) {
+  if (!days) return null;
+  if (days <= 7) return { label: "Semanal", emoji: "🔴", cls: "text-red-400" };
+  if (days <= 14) return { label: "Quincenal", emoji: "🟡", cls: "text-yellow-400" };
+  return { label: "Mensual", emoji: "🟢", cls: "text-green-400" };
+}
+
+function shouldSuggestLow(item: GroceryItem): boolean {
+  if (!item.last_stocked_at || !item.frequency_days || item.status !== "stocked") return false;
+  const elapsed = (Date.now() - new Date(item.last_stocked_at).getTime()) / (1000 * 60 * 60 * 24);
+  return elapsed > item.frequency_days * 0.8;
 }
 
 export default function ListaPage() {
   const { groceryItems, updateGroceryStatus, addGroceryItem, deleteGroceryItem } = useData();
   const [shoppingMode, setShoppingMode] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newCategory, setNewCategory] = useState("Otros");
+  const [newCategory, setNewCategory] = useState("Lácteos");
   const [newQuantity, setNewQuantity] = useState("");
+  const [newBrand, setNewBrand] = useState("");
+  const [newTypicalQty, setNewTypicalQty] = useState("");
+  const [newFrequency, setNewFrequency] = useState<string>("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const suggestedLowItems = useMemo(() => groceryItems.filter(shouldSuggestLow), [groceryItems]);
 
   const cycleStatus = async (item: GroceryItem) => {
     const cycle = shoppingMode ? SHOPPING_CYCLE : STATUS_CYCLE;
@@ -34,13 +53,21 @@ export default function ListaPage() {
 
   const addItem = async () => {
     if (!newName.trim()) return;
+    const freqMap: Record<string, number> = { "7": 7, "14": 14, "30": 30 };
+    const freq = newFrequency ? (freqMap[newFrequency] || parseInt(newFrequency) || null) : null;
     await addGroceryItem({
       name: newName.trim(),
       category: newCategory,
       quantity: newQuantity.trim() || null,
+      typical_qty: newTypicalQty.trim() || null,
+      brand: newBrand.trim() || null,
+      frequency_days: freq,
     });
     setNewName("");
     setNewQuantity("");
+    setNewBrand("");
+    setNewTypicalQty("");
+    setNewFrequency("");
   };
 
   const displayItems = shoppingMode
@@ -48,8 +75,10 @@ export default function ListaPage() {
     : groceryItems;
 
   const grouped = displayItems.reduce((acc, item) => {
-    if (!acc[item.category]) acc[item.category] = [];
-    acc[item.category].push(item);
+    const catInfo = getCategoryInfo(item.category);
+    const key = catInfo.name;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
     return acc;
   }, {} as Record<string, GroceryItem[]>);
 
@@ -60,6 +89,12 @@ export default function ListaPage() {
 
   const neededCount = groceryItems.filter(i => i.status === "needed").length;
   const inCartCount = groceryItems.filter(i => i.status === "in_cart").length;
+
+  const renderItemLabel = (item: GroceryItem) => {
+    const parts = [item.name];
+    if (item.brand) parts[0] = `${item.name} ${item.brand}`;
+    return parts[0];
+  };
 
   return (
     <div className="max-w-lg mx-auto">
@@ -87,6 +122,27 @@ export default function ListaPage() {
         </div>
       </div>
 
+      {/* Smart suggestions */}
+      {!shoppingMode && suggestedLowItems.length > 0 && (
+        <div className="px-4 py-2">
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
+            <p className="text-xs font-semibold text-yellow-400 mb-2">⚡ Probablemente por acabarse:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestedLowItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => updateGroceryStatus(item.id, "low")}
+                  className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded-lg hover:bg-yellow-500/30 transition-colors"
+                >
+                  {item.name} → ⚠️
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add item form */}
       <div className="px-4 py-3">
         <div className="flex gap-2">
           <input
@@ -97,20 +153,13 @@ export default function ListaPage() {
             placeholder="Agregar item..."
             className="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
           />
-          <input
-            type="text"
-            value={newQuantity}
-            onChange={e => setNewQuantity(e.target.value)}
-            placeholder="Cant."
-            className="w-16 bg-slate-800/60 border border-slate-700 rounded-xl px-2 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-          />
           <select
             value={newCategory}
             onChange={e => setNewCategory(e.target.value)}
             className="bg-slate-800/60 border border-slate-700 rounded-xl px-2 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
           >
             {GROCERY_CATEGORIES.map(c => (
-              <option key={c.name} value={c.name}>{c.emoji} {c.name}</option>
+              <option key={c.id} value={c.name}>{c.emoji} {c.name}</option>
             ))}
           </select>
           <button
@@ -120,8 +169,46 @@ export default function ListaPage() {
             +
           </button>
         </div>
+
+        {/* Toggle advanced fields */}
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-xs text-slate-500 mt-2 hover:text-slate-300 transition-colors"
+        >
+          {showAdvanced ? "▲ Menos opciones" : "▼ Más opciones (marca, cantidad, frecuencia)"}
+        </button>
+
+        {showAdvanced && (
+          <div className="flex gap-2 mt-2">
+            <input
+              type="text"
+              value={newBrand}
+              onChange={e => setNewBrand(e.target.value)}
+              placeholder="Marca"
+              className="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+            <input
+              type="text"
+              value={newTypicalQty}
+              onChange={e => setNewTypicalQty(e.target.value)}
+              placeholder="Cant. (x2, 1kg)"
+              className="w-24 bg-slate-800/60 border border-slate-700 rounded-xl px-2 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+            <select
+              value={newFrequency}
+              onChange={e => setNewFrequency(e.target.value)}
+              className="bg-slate-800/60 border border-slate-700 rounded-xl px-2 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Frecuencia</option>
+              <option value="7">🔴 Semanal</option>
+              <option value="14">🟡 Quincenal</option>
+              <option value="30">🟢 Mensual</option>
+            </select>
+          </div>
+        )}
       </div>
 
+      {/* Items list */}
       <div className="px-4 space-y-4 pb-4">
         {(shoppingMode ? Object.entries(grouped) : activeItems).map(([cat, catItems]) => {
           const catInfo = getCategoryInfo(cat);
@@ -133,20 +220,28 @@ export default function ListaPage() {
               <div className="space-y-1.5">
                 {(catItems as GroceryItem[]).map(item => {
                   const status = STATUS_CONFIG[item.status];
+                  const freqBadge = getFrequencyBadge(item.frequency_days);
+                  const isSuggested = shouldSuggestLow(item);
                   return (
                     <div
                       key={item.id}
-                      className="group bg-slate-800/60 rounded-xl p-3 flex items-center gap-3 active:scale-[0.98] transition-all cursor-pointer"
+                      className={`group bg-slate-800/60 rounded-xl p-3 flex items-center gap-3 active:scale-[0.98] transition-all cursor-pointer ${isSuggested ? "ring-1 ring-yellow-500/30" : ""}`}
                       onClick={() => cycleStatus(item)}
                     >
                       <span className="text-lg">{status.emoji}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className={`font-medium text-sm ${item.status === "stocked" ? "text-slate-500" : "text-slate-100"}`}>
-                            {item.name}
+                            {renderItemLabel(item)}
                           </span>
-                          {item.quantity && <span className="text-xs text-slate-500">{item.quantity}</span>}
+                          {item.typical_qty && <span className="text-xs text-slate-400">— {item.typical_qty}</span>}
+                          {item.quantity && !item.typical_qty && <span className="text-xs text-slate-500">{item.quantity}</span>}
                         </div>
+                        {freqBadge && (
+                          <span className={`text-[10px] ${freqBadge.cls}`}>
+                            {freqBadge.emoji} {freqBadge.label}
+                          </span>
+                        )}
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${status.color}`}>
                         {status.label}
@@ -181,20 +276,30 @@ export default function ListaPage() {
             <div className="space-y-1.5 mt-2">
               {stockedItems.map(item => {
                 const catInfo = getCategoryInfo(item.category);
+                const freqBadge = getFrequencyBadge(item.frequency_days);
+                const isSuggested = shouldSuggestLow(item);
                 return (
                   <div
                     key={item.id}
-                    className="group bg-slate-800/30 rounded-xl p-3 flex items-center gap-3 active:scale-[0.98] transition-all cursor-pointer opacity-60"
+                    className={`group bg-slate-800/30 rounded-xl p-3 flex items-center gap-3 active:scale-[0.98] transition-all cursor-pointer opacity-60 ${isSuggested ? "ring-1 ring-yellow-500/40 opacity-80" : ""}`}
                     onClick={() => cycleStatus(item)}
                   >
                     <span className="text-lg">✅</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-slate-500">{item.name}</span>
-                        {item.quantity && <span className="text-xs text-slate-600">{item.quantity}</span>}
+                        <span className="font-medium text-sm text-slate-500">{renderItemLabel(item)}</span>
+                        {item.typical_qty && <span className="text-xs text-slate-600">— {item.typical_qty}</span>}
                         <span className="text-xs text-slate-600">{catInfo.emoji}</span>
                       </div>
+                      {freqBadge && (
+                        <span className={`text-[10px] ${freqBadge.cls}`}>
+                          {freqBadge.emoji} {freqBadge.label}
+                        </span>
+                      )}
                     </div>
+                    {isSuggested && (
+                      <span className="text-[10px] text-yellow-400 bg-yellow-500/20 px-1.5 py-0.5 rounded-full">⚡ revisar</span>
+                    )}
                     <button
                       onClick={e => { e.stopPropagation(); deleteGroceryItem(item.id); }}
                       className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all text-sm p-1"

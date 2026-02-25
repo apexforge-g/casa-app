@@ -37,7 +37,7 @@ interface DataContextType {
   }) => Promise<Task | null>;
   deleteTask: (id: string) => Promise<void>;
   updateGroceryStatus: (id: string, status: string) => Promise<void>;
-  addGroceryItem: (data: { name: string; category: string; quantity: string | null }) => Promise<GroceryItem | null>;
+  addGroceryItem: (data: { name: string; category: string; quantity: string | null; typical_qty?: string | null; brand?: string | null; frequency_days?: number | null }) => Promise<GroceryItem | null>;
   deleteGroceryItem: (id: string) => Promise<void>;
   toggleBillPaid: (payment: BillPayment) => Promise<void>;
   markRoutineDone: (routine: Routine) => Promise<void>;
@@ -275,15 +275,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const updateGroceryStatus = useCallback(async (id: string, status: string) => {
     const prev = groceryItems;
-    setGroceryItems(items => items.map(i => i.id === id ? { ...i, status: status as GroceryItem["status"] } : i));
-    const { error } = await supabase.from("grocery_items").update({ status }).eq("id", id);
+    const updates: Record<string, unknown> = { status };
+    if (status === "stocked") updates.last_stocked_at = new Date().toISOString();
+    setGroceryItems(items => items.map(i => i.id === id ? { ...i, status: status as GroceryItem["status"], ...(status === "stocked" ? { last_stocked_at: new Date().toISOString() } : {}) } : i));
+    const { error } = await supabase.from("grocery_items").update(updates).eq("id", id);
     if (error) {
       console.error("Failed to update grocery status:", error);
       setGroceryItems(prev);
     }
   }, [supabase, groceryItems]);
 
-  const addGroceryItem = useCallback(async (data: { name: string; category: string; quantity: string | null }): Promise<GroceryItem | null> => {
+  const addGroceryItem = useCallback(async (data: { name: string; category: string; quantity: string | null; typical_qty?: string | null; brand?: string | null; frequency_days?: number | null }): Promise<GroceryItem | null> => {
     const { data: item, error } = await supabase
       .from("grocery_items")
       .insert({ ...data, status: "needed" as const, created_by: userId })

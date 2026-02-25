@@ -30,21 +30,27 @@ export interface GroceryItem {
   category: string;
   status: 'stocked' | 'low' | 'needed' | 'in_cart';
   quantity: string | null;
+  typical_qty: string | null;
+  brand: string | null;
+  frequency_days: number | null;
+  last_stocked_at: string | null;
   household_id: string | null;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export const GROCERY_CATEGORIES = [
-  { name: 'Carnes', emoji: '🥩', color: '#EF4444' },
-  { name: 'Verduras/Frutas', emoji: '🥬', color: '#22C55E' },
-  { name: 'Lácteos', emoji: '🧀', color: '#FBBF24' },
-  { name: 'Limpieza', emoji: '🧹', color: '#60A5FA' },
-  { name: 'Despensa', emoji: '🫙', color: '#F97316' },
-  { name: 'Congelados', emoji: '🧊', color: '#38BDF8' },
-  { name: 'Bebidas', emoji: '🥤', color: '#A78BFA' },
-  { name: 'Otros', emoji: '📦', color: '#94A3B8' },
+  { id: "lacteos", name: "Lácteos", emoji: "🥛", color: "#60A5FA" },
+  { id: "carnes", name: "Carnes/Fiambre", emoji: "🥩", color: "#EF4444" },
+  { id: "frutas", name: "Frutas", emoji: "🍎", color: "#F59E0B" },
+  { id: "verduras", name: "Verduras", emoji: "🥬", color: "#10B981" },
+  { id: "despensa", name: "Despensa", emoji: "🍞", color: "#D97706" },
+  { id: "congelados", name: "Congelados", emoji: "🧊", color: "#38BDF8" },
+  { id: "conservas", name: "Conservas", emoji: "🥫", color: "#FB923C" },
+  { id: "limpieza", name: "Limpieza", emoji: "🧴", color: "#A78BFA" },
+  { id: "higiene", name: "Higiene", emoji: "🧼", color: "#F472B6" },
+  { id: "otros", name: "Otros", emoji: "📦", color: "#94A3B8" },
 ] as const;
 
 export interface UserProfile {
