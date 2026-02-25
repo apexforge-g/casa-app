@@ -5,7 +5,14 @@ import { useData } from "@/context/DataContext";
 import { GroceryItem, GROCERY_CATEGORIES } from "@/types";
 
 function getCategoryInfo(cat: string) {
-  return GROCERY_CATEGORIES.find(c => c.name === cat || c.id === cat) || { id: "otros", name: cat, emoji: "📦", color: "#94A3B8" };
+  return GROCERY_CATEGORIES.find(c => c.id === cat || c.name === cat) || { id: "otros", name: cat || "Otros", emoji: "📦", color: "#94A3B8" };
+}
+
+function getFrequencyDot(item: GroceryItem): string | null {
+  if (!item.frequency_days) return null;
+  if (item.frequency_days <= 7) return "🔴";
+  if (item.frequency_days <= 14) return "🟡";
+  return "🟢";
 }
 
 function shouldShowFrequencyHint(item: GroceryItem): boolean {
@@ -19,30 +26,36 @@ function normalize(s: string): string {
 }
 
 function groupByCategory(items: GroceryItem[]): [string, GroceryItem[]][] {
+  const order = GROCERY_CATEGORIES.map(c => c.id);
   const grouped: Record<string, GroceryItem[]> = {};
   for (const item of items) {
     const catInfo = getCategoryInfo(item.category);
-    const key = catInfo.name;
+    const key = catInfo.id;
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(item);
   }
-  return Object.entries(grouped);
+  return Object.entries(grouped).sort((a, b) => {
+    const ai = order.indexOf(a[0]);
+    const bi = order.indexOf(b[0]);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
 }
 
 export default function ListaPage() {
   const { groceryItems, updateGroceryStatus, addGroceryItem, deleteGroceryItem } = useData();
   const [newName, setNewName] = useState("");
-  const [newCategory, setNewCategory] = useState("Lácteos");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCategory, setNewCategory] = useState("despensa");
   const [newBrand, setNewBrand] = useState("");
   const [newQuantity, setNewQuantity] = useState("");
   const [newFrequency, setNewFrequency] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [tenemosOpen, setTenemosOpen] = useState(false);
   const [animatingOut, setAnimatingOut] = useState<Set<string>>(new Set());
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [longPressId, setLongPressId] = useState<string | null>(null);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const suggestions = useMemo(() => {
     const q = newName.trim();
@@ -69,6 +82,7 @@ export default function ListaPage() {
     }
     setNewName("");
     setShowSuggestions(false);
+    setShowAddForm(false);
   }, [updateGroceryStatus]);
 
   const faltaItems = useMemo(() => groceryItems.filter(i => i.status === "needed"), [groceryItems]);
@@ -79,7 +93,6 @@ export default function ListaPage() {
   const toggleStatus = useCallback(async (item: GroceryItem) => {
     const newStatus = item.status === "needed" ? "stocked" : "needed";
     setAnimatingOut(prev => new Set(prev).add(item.id));
-    // Wait for animation
     setTimeout(async () => {
       await updateGroceryStatus(item.id, newStatus);
       setAnimatingOut(prev => {
@@ -89,6 +102,11 @@ export default function ListaPage() {
       });
     }, 300);
   }, [updateGroceryStatus]);
+
+  const openAddForm = () => {
+    setShowAddForm(true);
+    setShowSuggestions(false);
+  };
 
   const addItem = async () => {
     if (!newName.trim()) return;
@@ -101,55 +119,105 @@ export default function ListaPage() {
       brand: newBrand.trim() || null,
       frequency_days: freq,
     });
+    setToast(`"${newName.trim()}" agregado a Falta`);
     setNewName("");
     setNewBrand("");
     setNewQuantity("");
     setNewFrequency("");
+    setNewCategory("despensa");
+    setShowAddForm(false);
+  };
+
+  const handleLongPressStart = (id: string) => {
+    longPressTimer.current = setTimeout(() => {
+      setLongPressId(id);
+    }, 500);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const confirmDelete = async (id: string) => {
+    await deleteGroceryItem(id);
+    setLongPressId(null);
+    setToast("Item eliminado");
   };
 
   const renderItem = (item: GroceryItem, isStocked: boolean) => {
     const catInfo = getCategoryInfo(item.category);
     const isExiting = animatingOut.has(item.id);
     const showHint = shouldShowFrequencyHint(item);
+    const freqDot = getFrequencyDot(item);
 
     return (
-      <div
-        key={item.id}
-        className={`group flex items-center gap-3 p-3 rounded-xl cursor-pointer active:scale-[0.97] transition-all duration-300 ${
-          isExiting
-            ? "opacity-0 translate-x-8 scale-95"
-            : "opacity-100 translate-x-0 scale-100"
-        } ${
-          isStocked
-            ? "bg-slate-800/30 hover:bg-slate-800/50"
-            : "bg-slate-800/60 hover:bg-slate-700/60"
-        }`}
-        onClick={() => toggleStatus(item)}
-      >
-        <span className="text-base w-6 text-center">{catInfo.emoji}</span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`font-medium text-sm truncate ${isStocked ? "text-slate-500" : "text-slate-100"}`}>
-              {item.name}
-            </span>
-            {item.brand && (
-              <span className="text-xs text-slate-500 truncate">{item.brand}</span>
-            )}
-            {item.quantity && (
-              <span className="text-xs text-slate-600">×{item.quantity}</span>
-            )}
-            {showHint && <span className="text-xs" title="Probablemente por acabarse">⚡</span>}
-          </div>
-        </div>
-        <span className={`text-lg transition-transform ${isExiting ? "scale-125" : ""}`}>
-          {isStocked ? "❌" : "✅"}
-        </span>
-        <button
-          onClick={e => { e.stopPropagation(); deleteGroceryItem(item.id); }}
-          className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all text-sm p-1"
+      <div key={item.id} className="relative">
+        <div
+          className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer active:scale-[0.97] transition-all duration-300 select-none ${
+            isExiting
+              ? "opacity-0 translate-x-8 scale-95"
+              : "opacity-100 translate-x-0 scale-100"
+          } ${
+            isStocked
+              ? "bg-slate-800/30 hover:bg-slate-800/50"
+              : "bg-slate-800/60 hover:bg-slate-700/60"
+          }`}
+          onClick={() => {
+            if (longPressId === item.id) return;
+            toggleStatus(item);
+          }}
+          onTouchStart={() => handleLongPressStart(item.id)}
+          onTouchEnd={handleLongPressEnd}
+          onTouchCancel={handleLongPressEnd}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setLongPressId(item.id);
+          }}
         >
-          ✕
-        </button>
+          <span className="text-base w-6 text-center">{catInfo.emoji}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`font-medium text-sm truncate ${isStocked ? "text-slate-500" : "text-slate-100"}`}>
+                {item.name}
+              </span>
+              {item.brand && (
+                <span className="text-xs text-slate-500 truncate">{item.brand}</span>
+              )}
+              {item.typical_qty && (
+                <span className="text-[10px] bg-slate-700/60 text-slate-400 px-1.5 py-0.5 rounded-md">{item.typical_qty}</span>
+              )}
+              {item.quantity && !item.typical_qty && (
+                <span className="text-[10px] bg-slate-700/60 text-slate-400 px-1.5 py-0.5 rounded-md">{item.quantity}</span>
+              )}
+              {freqDot && <span className="text-[10px]">{freqDot}</span>}
+              {showHint && <span className="text-xs" title="Probablemente por acabarse">⚡</span>}
+            </div>
+          </div>
+          <span className={`text-lg transition-transform ${isExiting ? "scale-125" : ""}`}>
+            {isStocked ? "❌" : "✅"}
+          </span>
+        </div>
+
+        {/* Delete confirmation overlay */}
+        {longPressId === item.id && (
+          <div className="absolute inset-0 bg-red-900/90 rounded-xl flex items-center justify-center gap-4 z-10 animate-in fade-in duration-150">
+            <button
+              onClick={() => confirmDelete(item.id)}
+              className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            >
+              🗑 Eliminar
+            </button>
+            <button
+              onClick={() => setLongPressId(null)}
+              className="bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -174,7 +242,7 @@ export default function ListaPage() {
         </div>
       )}
 
-      {/* Quick Add */}
+      {/* Search Bar */}
       <div className="px-4 py-3">
         <div className="relative">
           <div className="flex gap-2">
@@ -182,35 +250,28 @@ export default function ListaPage() {
               ref={inputRef}
               type="text"
               value={newName}
-              onChange={e => { setNewName(e.target.value); setShowSuggestions(true); }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onChange={e => { setNewName(e.target.value); setShowSuggestions(true); setShowAddForm(false); }}
+              onFocus={() => { if (newName.trim()) setShowSuggestions(true); }}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               onKeyDown={e => {
                 if (e.key === "Enter" && suggestions.length === 0 && newName.trim()) {
-                  addItem();
+                  openAddForm();
                 } else if (e.key === "Enter" && suggestions.length > 0) {
                   handleSelectSuggestion(suggestions[0]);
                 } else if (e.key === "Escape") {
                   setShowSuggestions(false);
+                  setShowAddForm(false);
                 }
               }}
               placeholder="Buscar o agregar item..."
-              className="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              className="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
             />
-            <button
-              onClick={addItem}
-              disabled={!newName.trim()}
-              className="bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
-            >
-              +
-            </button>
           </div>
 
           {/* Suggestions Dropdown */}
-          {showSuggestions && newName.trim() && (
+          {showSuggestions && newName.trim() && !showAddForm && (
             <div
-              ref={suggestionsRef}
-              className="absolute left-0 right-12 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl z-40"
+              className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl z-40"
               onMouseDown={e => e.preventDefault()}
             >
               {suggestions.map(item => {
@@ -224,7 +285,6 @@ export default function ListaPage() {
                     <span className="text-sm">{catInfo.emoji}</span>
                     <span className="text-sm text-slate-100 truncate">{item.name}</span>
                     {item.brand && <span className="text-xs text-slate-500 truncate">{item.brand}</span>}
-                    {item.quantity && <span className="text-xs text-slate-600">×{item.quantity}</span>}
                     <span className={`ml-auto text-xs px-1.5 py-0.5 rounded-md whitespace-nowrap ${
                       item.status === "stocked"
                         ? "bg-green-900/40 text-green-400"
@@ -235,9 +295,9 @@ export default function ListaPage() {
                   </button>
                 );
               })}
-              {/* Add new option */}
               <button
-                onClick={() => { setShowSuggestions(false); setShowAdvanced(true); }}
+                onMouseDown={e => e.preventDefault()}
+                onClick={openAddForm}
                 className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-slate-700/60 transition-colors text-left border-t border-slate-700/50"
               >
                 <span className="text-sm">➕</span>
@@ -246,47 +306,92 @@ export default function ListaPage() {
             </div>
           )}
         </div>
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="text-xs text-slate-500 mt-2 hover:text-slate-300 transition-colors"
-        >
-          {showAdvanced ? "▲ Menos" : "▼ Categoría, marca, frecuencia"}
-        </button>
-        {showAdvanced && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            <select
-              value={newCategory}
-              onChange={e => setNewCategory(e.target.value)}
-              className="bg-slate-800/60 border border-slate-700 rounded-xl px-2 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+
+        {/* Add New Item Form */}
+        {showAddForm && newName.trim() && (
+          <div className="mt-3 bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-200">Nuevo: {newName.trim()}</h3>
+              <button onClick={() => setShowAddForm(false)} className="text-slate-500 hover:text-slate-300 text-sm">✕</button>
+            </div>
+
+            {/* Category - Emoji Buttons */}
+            <div>
+              <label className="text-xs text-slate-400 mb-1.5 block">Categoría *</label>
+              <div className="flex flex-wrap gap-1.5">
+                {GROCERY_CATEGORIES.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => setNewCategory(c.id)}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                      newCategory === c.id
+                        ? "ring-2 ring-blue-500 bg-slate-700 text-white scale-105"
+                        : "bg-slate-800/60 text-slate-400 hover:bg-slate-700/60"
+                    }`}
+                  >
+                    <span>{c.emoji}</span>
+                    <span className="hidden sm:inline">{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Brand + Quantity row */}
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-slate-400 mb-1 block">Marca</label>
+                <input
+                  type="text"
+                  value={newBrand}
+                  onChange={e => setNewBrand(e.target.value)}
+                  placeholder="Colun, Lider..."
+                  className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2.5 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="w-24">
+                <label className="text-xs text-slate-400 mb-1 block">Cantidad</label>
+                <input
+                  type="text"
+                  value={newQuantity}
+                  onChange={e => setNewQuantity(e.target.value)}
+                  placeholder="x2, 1kg"
+                  className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2.5 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Frequency */}
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Frecuencia</label>
+              <div className="flex gap-2">
+                {[
+                  { value: "", label: "—", dot: "" },
+                  { value: "7", label: "Semanal", dot: "🔴" },
+                  { value: "14", label: "Quincenal", dot: "🟡" },
+                  { value: "30", label: "Mensual", dot: "🟢" },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setNewFrequency(opt.value)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs transition-all ${
+                      newFrequency === opt.value
+                        ? "ring-2 ring-blue-500 bg-slate-700 text-white"
+                        : "bg-slate-800/60 text-slate-400 hover:bg-slate-700/60"
+                    }`}
+                  >
+                    {opt.dot} {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Submit */}
+            <button
+              onClick={addItem}
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium transition-colors"
             >
-              {GROCERY_CATEGORIES.map(c => (
-                <option key={c.id} value={c.name}>{c.emoji} {c.name}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={newBrand}
-              onChange={e => setNewBrand(e.target.value)}
-              placeholder="Marca"
-              className="flex-1 min-w-[80px] bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-            />
-            <input
-              type="text"
-              value={newQuantity}
-              onChange={e => setNewQuantity(e.target.value)}
-              placeholder="Cant."
-              className="w-16 bg-slate-800/60 border border-slate-700 rounded-xl px-2 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-            />
-            <select
-              value={newFrequency}
-              onChange={e => setNewFrequency(e.target.value)}
-              className="bg-slate-800/60 border border-slate-700 rounded-xl px-2 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
-            >
-              <option value="">Frecuencia</option>
-              <option value="7">🔴 Semanal</option>
-              <option value="14">🟡 Quincenal</option>
-              <option value="30">🟢 Mensual</option>
-            </select>
+              ➕ Agregar a Falta
+            </button>
           </div>
         )}
       </div>
@@ -297,18 +402,20 @@ export default function ListaPage() {
           ❌ Falta {faltaItems.length > 0 && `(${faltaItems.length})`}
         </h2>
         {faltaGrouped.length === 0 ? (
-          <div className="text-center py-8 text-slate-600">
-            <p className="text-3xl mb-2">✨</p>
-            <p className="text-sm">¡No falta nada!</p>
+          <div className="text-center py-10 text-slate-600">
+            <p className="text-4xl mb-3">🎉</p>
+            <p className="text-sm font-medium text-slate-400">¡No falta nada!</p>
+            <p className="text-xs text-slate-600 mt-1">Busca arriba para agregar items</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {faltaGrouped.map(([cat, items]) => {
-              const catInfo = getCategoryInfo(cat);
+            {faltaGrouped.map(([catId, items]) => {
+              const catInfo = getCategoryInfo(catId);
               return (
-                <div key={cat}>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-1.5 px-1" style={{ color: catInfo.color }}>
+                <div key={catId}>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-1.5 px-1 flex items-center gap-1.5" style={{ color: catInfo.color }}>
                     {catInfo.emoji} {catInfo.name}
+                    <span className="text-slate-600 font-normal">({items.length})</span>
                   </h3>
                   <div className="space-y-1.5">
                     {items.map(item => renderItem(item, false))}
@@ -331,12 +438,13 @@ export default function ListaPage() {
         </button>
         {tenemosOpen && (
           <div className="space-y-4">
-            {tenemosGrouped.map(([cat, items]) => {
-              const catInfo = getCategoryInfo(cat);
+            {tenemosGrouped.map(([catId, items]) => {
+              const catInfo = getCategoryInfo(catId);
               return (
-                <div key={cat}>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-1.5 px-1" style={{ color: catInfo.color }}>
+                <div key={catId}>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-1.5 px-1 flex items-center gap-1.5" style={{ color: catInfo.color }}>
                     {catInfo.emoji} {catInfo.name}
+                    <span className="text-slate-600 font-normal">({items.length})</span>
                   </h3>
                   <div className="space-y-1.5">
                     {items.map(item => renderItem(item, true))}

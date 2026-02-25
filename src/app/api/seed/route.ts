@@ -35,19 +35,19 @@ export async function POST() {
 
   // Seed grocery items
   const groceries = [
-    { name: "Leche", category: "Lácteos" },
-    { name: "Huevos", category: "Lácteos" },
-    { name: "Pan", category: "Despensa" },
-    { name: "Arroz", category: "Despensa" },
-    { name: "Fideos", category: "Despensa" },
-    { name: "Aceite", category: "Despensa" },
-    { name: "Papel higiénico", category: "Limpieza" },
-    { name: "Jabón", category: "Limpieza" },
-    { name: "Detergente", category: "Limpieza" },
-    { name: "Frutas", category: "Verduras/Frutas" },
-    { name: "Verduras", category: "Verduras/Frutas" },
-    { name: "Pollo", category: "Carnes" },
-    { name: "Carne", category: "Carnes" },
+    { name: "Leche", category: "lacteos" },
+    { name: "Huevos", category: "lacteos" },
+    { name: "Pan", category: "despensa" },
+    { name: "Arroz", category: "despensa" },
+    { name: "Fideos", category: "despensa" },
+    { name: "Aceite", category: "despensa" },
+    { name: "Papel higiénico", category: "higiene" },
+    { name: "Jabón", category: "higiene" },
+    { name: "Detergente", category: "limpieza" },
+    { name: "Frutas", category: "frutas" },
+    { name: "Verduras", category: "verduras" },
+    { name: "Pollo", category: "carnes" },
+    { name: "Carne", category: "carnes" },
   ];
   await supabase.from("grocery_items").insert(
     groceries.map(g => ({ ...g, status: "stocked", created_by: user.id }))
